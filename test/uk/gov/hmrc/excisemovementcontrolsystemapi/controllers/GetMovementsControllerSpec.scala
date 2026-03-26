@@ -17,6 +17,9 @@
 package uk.gov.hmrc.excisemovementcontrolsystemapi.controllers
 
 import org.apache.pekko.Done
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.stream.scaladsl.Source
 import org.mockito.ArgumentMatchersSugar.{any, eqTo}
 import org.mockito.MockitoSugar.{reset, times, verify, when}
 import org.scalatest.BeforeAndAfterEach
@@ -51,13 +54,15 @@ class GetMovementsControllerSpec
     with ErrorResponseSupport
     with BeforeAndAfterEach {
 
-  implicit val ec: ExecutionContext = ExecutionContext.Implicits.global
-  private val cc                    = stubControllerComponents()
-  private val movementService       = mock[MovementService]
-  private val dateTimeService       = mock[DateTimeService]
-  private val messageService        = mock[MessageService]
-  private val movementIdValidator   = mock[MovementIdValidation]
-  private val auditService          = mock[AuditService]
+  implicit val ec: ExecutionContext       = ExecutionContext.Implicits.global
+  private val actorSystem                 = ActorSystem()
+  implicit val materializer: Materializer = Materializer.createMaterializer(actorSystem)
+  private val cc                          = stubControllerComponents()
+  private val movementService             = mock[MovementService]
+  private val dateTimeService             = mock[DateTimeService]
+  private val messageService              = mock[MessageService]
+  private val movementIdValidator         = mock[MovementIdValidation]
+  private val auditService                = mock[AuditService]
 
   private val controller = new GetMovementsController(
     FakeSuccessAuthentication(Set(ern)),
@@ -161,6 +166,24 @@ class GetMovementsControllerSpec
         )
       )
 
+    when(movementService.streamMovementsByErn(any))
+      .thenReturn(
+        Source.fromIterator(() =>
+          Iterator.single(
+            Movement(
+              "cfdb20c7-d0b0-4b8b-a071-737d68dede5e",
+              Some("boxId"),
+              "lrn",
+              ern,
+              Some("consigneeId"),
+              Some("arc"),
+              timestamp,
+              Seq.empty
+            )
+          )
+        )
+      )
+
     when(dateTimeService.timestamp()).thenReturn(timestamp)
 
     when(messageService.updateAllMessages(any)(any)).thenReturn(Future.successful(Done))
@@ -221,6 +244,9 @@ class GetMovementsControllerSpec
           )
           when(movementService.getMovementByErn(any, any))
             .thenReturn(Future.successful(Seq(movement1, movement2)))
+
+          when(movementService.streamMovementsByErn(any))
+            .thenReturn(Source.fromIterator(() => Iterator(movement1, movement2)))
 
           val result = controller.getMovements(None, None, None, None, None)(enrolmentRequest)
 
@@ -336,6 +362,9 @@ class GetMovementsControllerSpec
 
           when(movementService.getMovementByErn(any, any))
             .thenReturn(Future.successful(Seq(movement2)))
+
+          when(movementService.streamMovementsByErn(any))
+            .thenReturn(Source.fromIterator(() => Iterator.single(movement2)))
 
           val result = controller.getMovements(Some(localErn), None, None, None, None)(enrolmentRequest)
 

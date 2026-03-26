@@ -17,11 +17,14 @@
 package uk.gov.hmrc.excisemovementcontrolsystemapi.controllers
 
 import cats.data._
+import cats.syntax.functor._
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.util.ByteString
 import play.api.Logging
 import play.api.libs.json.Json
 import play.api.mvc._
 import uk.gov.hmrc.excisemovementcontrolsystemapi.controllers.actions._
-import uk.gov.hmrc.excisemovementcontrolsystemapi.filters.{MovementFilter, TraderType}
 import uk.gov.hmrc.excisemovementcontrolsystemapi.models.validation.MovementIdValidation
 import uk.gov.hmrc.excisemovementcontrolsystemapi.models.{ErrorResponse, ExciseMovementResponse}
 import uk.gov.hmrc.excisemovementcontrolsystemapi.repository.model.Movement
@@ -32,9 +35,9 @@ import uk.gov.hmrc.http.HeaderCarrier
 import uk.gov.hmrc.play.bootstrap.backend.controller.BackendController
 import uk.gov.hmrc.play.http.HeaderCarrierConverter
 
-import java.time.Instant
 import javax.inject.Inject
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.chaining.scalaUtilChainingOps
 import scala.util.control.NonFatal
 
 class GetMovementsController @Inject() (
@@ -67,39 +70,39 @@ class GetMovementsController @Inject() (
       andThen validateTraderTypeAction(traderType)).async(parse.default) { implicit request =>
       implicit val hc: HeaderCarrier = HeaderCarrierConverter.fromRequest(request)
 
-      val filter =
-        MovementFilter(
-          ern,
-          lrn,
-          arc,
-          updatedSince.map(Instant.parse(_)),
-          traderType.map(trader => TraderType(trader, request.erns.toSeq))
+      messageService
+        .updateAllMessages(ern.fold(request.erns)(Set(_)))
+        .as(
+          movementService
+            .streamMovementsByErn(request.erns.toSeq)
+            .pipe(streamJsonArray)
+            .pipe(movements => Ok.streamed(movements, None, Some("application/json")))
         )
-
-      {
-        for {
-          _         <- messageService.updateAllMessages(ern.fold(request.erns)(Set(_)))
-          movements <- movementService.getMovementByErn(request.erns.toSeq, filter)
-        } yield {
-          auditService.getInformationForGetMovements(filter, movements, request)
-          Ok(Json.toJson(movements.map(createResponseFrom)))
-        }
-      }.recover { case NonFatal(ex) =>
-        logger.warn(
-          s"Error getting movements for erns ${request.erns} with filters ern: $ern, lrn: $lrn, arc: $arc, updatedSince: $updatedSince, traderType: $traderType",
-          ex
-        )
-        InternalServerError(
-          Json.toJson(
-            ErrorResponse(
-              dateTimeService.timestamp(),
-              "Error getting movements",
-              "Unknown error while getting movements"
+        .recover { case NonFatal(ex) =>
+          logger.warn(
+            s"Error getting movements for erns ${request.erns} with filters ern: $ern, lrn: $lrn, arc: $arc, updatedSince: $updatedSince, traderType: $traderType",
+            ex
+          )
+          InternalServerError(
+            Json.toJson(
+              ErrorResponse(
+                dateTimeService.timestamp(),
+                "Error getting movements",
+                "Unknown error while getting movements"
+              )
             )
           )
-        )
-      }
+        }
     }
+
+  private def streamJsonArray(source: Source[Movement, NotUsed]): Source[ByteString, NotUsed] =
+    source
+      .map(createResponseFrom)
+      .map(Json.toJson(_).toString())
+      .grouped(2)
+      .map(_.mkString(","))
+      .map(ByteString(_))
+      .pipe(Source.single(ByteString("[")) ++ _ ++ Source.single(ByteString("]")))
 
   def getMovement(movementId: String): Action[AnyContent] =
     (authAction andThen correlationIdAction).async(parse.default) { implicit request =>

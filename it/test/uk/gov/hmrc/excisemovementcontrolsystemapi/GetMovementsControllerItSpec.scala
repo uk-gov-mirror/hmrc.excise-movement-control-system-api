@@ -16,6 +16,7 @@
 
 package uk.gov.hmrc.excisemovementcontrolsystemapi
 
+import org.apache.pekko.stream.scaladsl.Source
 import org.mockito.ArgumentMatchersSugar.{any, eqTo}
 import org.mockito.MockitoSugar.{reset, when}
 import org.scalatest.BeforeAndAfterEach
@@ -72,9 +73,9 @@ class GetMovementsControllerItSpec
     "return 200 and movements when logged in as consignor" in {
       withAuthorizedTrader(consignorId)
       when(
-        movementRepository.getMovementByERN(Seq(consignorId), MovementFilter.emptyFilter)
+        movementRepository.streamMovementsByERN(Seq(consignorId))
       )
-        .thenReturn(Future.successful(Seq(movement1, movement2)))
+        .thenReturn(Source.fromIterator(() => Iterator(movement1, movement2)))
 
       val result = getRequest(baseUrl)
 
