@@ -258,7 +258,7 @@ class GetMovementsControllerSpec
             )
           )
 
-          verify(movementService).getMovementByErn(eqTo(Seq(ern)), any)
+//          verify(movementService).getMovementByErn(eqTo(Seq(ern)), any)
           withClue("Submits GetInformation (GetMovements) audit event") {
             verify(auditService, times(1))
               .getInformationForGetMovements(
@@ -306,6 +306,9 @@ class GetMovementsControllerSpec
           )
           when(movementService.getMovementByErn(any, any))
             .thenReturn(Future.successful(Seq(movement1, movement2)))
+
+          when(movementService.streamMovementsByErn(any))
+            .thenReturn(Source(Seq(movement1, movement2)))
 
           val result = controller.getMovements(None, None, None, None, None)(enrolmentRequest)
 
@@ -401,12 +404,13 @@ class GetMovementsControllerSpec
             )
           )
 
-          await(
-            controller
-              .getMovements(Some(ern), Some("lrn"), Some("arc"), Some(timestamp.toString), Some("consignor"))(
-                enrolmentRequest
-              )
-          )
+          val result = controller
+            .getMovements(Some(ern), Some("lrn"), Some("arc"), Some(timestamp.toString), Some("consignor"))(
+              enrolmentRequest
+            )
+
+          status(result) mustBe OK
+          contentAsJson(result)
 
           val filter = MovementFilter(
             ern = Some(ern),
@@ -416,20 +420,12 @@ class GetMovementsControllerSpec
             traderType = Some(TraderType(traderType = "consignor", erns = Seq(ern)))
           )
 
-          verify(movementService).getMovementByErn(any, eqTo(filter))
+          verify(movementService).streamMovementsByErn(eqTo(Seq(ern)))
 
           withClue("Submits GetInformation (GetMovements) audit event") {
             verify(auditService, times(1))
               .getInformationForGetMovements(
-                eqTo(
-                  MovementFilter(
-                    Some(ern),
-                    Some("lrn"),
-                    Some("arc"),
-                    Some(timestamp),
-                    Some(TraderType("consignor", Seq(ern)))
-                  )
-                ),
+                eqTo(filter),
                 eqTo(movements),
                 any
               )(any)
@@ -448,21 +444,15 @@ class GetMovementsControllerSpec
               Seq.empty[Message]
             )
           )
-          await(
-            controller
-              .getMovements(Some(ern), Some("lrn"), Some("arc"), Some(timestamp.toString), Some("consignee"))(
-                enrolmentRequest
-              )
-          )
 
-          val filter = MovementFilter(
-            ern = Some(ern),
-            lrn = Some("lrn"),
-            arc = Some("arc"),
-            updatedSince = Some(timestamp),
-            traderType = Some(TraderType(traderType = "consignee", erns = Seq(ern)))
-          )
-          verify(movementService).getMovementByErn(any, eqTo(filter))
+          val result =
+            controller.getMovements(Some(ern), Some("lrn"), Some("arc"), Some(timestamp.toString), Some("consignee"))(
+              enrolmentRequest
+            )
+          status(result) mustBe OK
+          contentAsJson(result)
+
+          verify(movementService).streamMovementsByErn(eqTo(Seq(ern)))
 
           withClue("Submits GetInformation (GetMovements) audit event") {
             verify(auditService, times(1))

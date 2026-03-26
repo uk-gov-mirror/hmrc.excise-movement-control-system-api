@@ -25,6 +25,8 @@ import play.api.Logging
 import play.api.libs.json.Json
 import play.api.mvc._
 import uk.gov.hmrc.excisemovementcontrolsystemapi.controllers.actions._
+import uk.gov.hmrc.excisemovementcontrolsystemapi.filters.{MovementFilter, TraderType}
+import uk.gov.hmrc.excisemovementcontrolsystemapi.models.auth.EnrolmentRequest
 import uk.gov.hmrc.excisemovementcontrolsystemapi.models.validation.MovementIdValidation
 import uk.gov.hmrc.excisemovementcontrolsystemapi.models.{ErrorResponse, ExciseMovementResponse}
 import uk.gov.hmrc.excisemovementcontrolsystemapi.repository.model.Movement
@@ -35,6 +37,7 @@ import uk.gov.hmrc.http.HeaderCarrier
 import uk.gov.hmrc.play.bootstrap.backend.controller.BackendController
 import uk.gov.hmrc.play.http.HeaderCarrierConverter
 
+import java.time.Instant
 import javax.inject.Inject
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.chaining.scalaUtilChainingOps
@@ -70,11 +73,23 @@ class GetMovementsController @Inject() (
       andThen validateTraderTypeAction(traderType)).async(parse.default) { implicit request =>
       implicit val hc: HeaderCarrier = HeaderCarrierConverter.fromRequest(request)
 
+      val filter =
+        MovementFilter(
+          ern,
+          lrn,
+          arc,
+          updatedSince.map(Instant.parse(_)),
+          traderType.map(trader => TraderType(trader, request.erns.toSeq))
+        )
+
       messageService
         .updateAllMessages(ern.fold(request.erns)(Set(_)))
         .as(
           movementService
             .streamMovementsByErn(request.erns.toSeq)
+            .grouped(50)
+            .map(audit(_, filter))
+            .flatMapConcat(Source.apply)
             .pipe(streamJsonArray)
             .pipe(movements => Ok.streamed(movements, None, Some("application/json")))
         )
@@ -94,6 +109,14 @@ class GetMovementsController @Inject() (
           )
         }
     }
+
+  private def audit(movements: Seq[Movement], filter: MovementFilter)(implicit
+    request: EnrolmentRequest[AnyContent],
+    hc: HeaderCarrier
+  ): Seq[Movement] = {
+    auditService.getInformationForGetMovements(filter, movements, request)
+    movements
+  }
 
   private def streamJsonArray(source: Source[Movement, NotUsed]): Source[ByteString, NotUsed] =
     source
