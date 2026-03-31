@@ -94,12 +94,17 @@ class GetMovementsControllerItSpec
       withAuthorizedTrader(consignorId)
       when(
         movementRepository.streamMovementsByERN(Seq(consignorId))
+      ).thenReturn(Source.fromIterator(() => Iterator.fill(90000)(movement1)))
+
+      val requests = for(_ <- 0 to 19) yield clientRequest(baseUrl)
+
+      await(Future.sequence(requests)).foreach(
+        _.status mustBe OK
       )
-        .thenReturn(Source.fromIterator(() => Iterator.fill(90000)(movement1)))
+    }
 
-      val result = getRequest(baseUrl)
-
-      result.status mustBe OK
+    def clientRequest(url: String) = {
+      Future(getRequest(url))
     }
 
     "return an Unauthorized (401) when no authorized trader" in {
