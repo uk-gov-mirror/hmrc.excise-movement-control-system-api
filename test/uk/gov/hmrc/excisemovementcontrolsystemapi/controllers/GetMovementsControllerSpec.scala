@@ -215,7 +215,7 @@ class GetMovementsControllerSpec
         )
         withClue("Submits GetInformation (GetMovements) audit event") {
           verify(auditService, times(1))
-            .getInformationForGetMovements(eqTo(filter), eqTo(movements), any[EnrolmentRequest[AnyContent]])(
+            .getInformationForGetMovements(eqTo(filter), eqTo(movements.size), any[EnrolmentRequest[AnyContent]])(
               any
             )
         }
@@ -263,7 +263,7 @@ class GetMovementsControllerSpec
             verify(auditService, times(1))
               .getInformationForGetMovements(
                 eqTo(MovementFilter(None, None, None, None, None)),
-                eqTo(Seq(movement1, movement2)),
+                eqTo(Seq(movement1, movement2).size),
                 any[EnrolmentRequest[AnyContent]]
               )(any)
           }
@@ -326,7 +326,7 @@ class GetMovementsControllerSpec
             verify(auditService, times(1))
               .getInformationForGetMovements(
                 eqTo(MovementFilter(None, None, None, None, None)),
-                eqTo(Seq(movement1, movement2)),
+                eqTo(Seq(movement1, movement2).size),
                 any[EnrolmentRequest[AnyContent]]
               )(
                 any
@@ -382,7 +382,7 @@ class GetMovementsControllerSpec
             verify(auditService, times(1))
               .getInformationForGetMovements(
                 eqTo(MovementFilter(Some(localErn), None, None, None, None)),
-                eqTo(Seq(movement2)),
+                eqTo(Seq(movement2).size),
                 any[EnrolmentRequest[AnyContent]]
               )(
                 any
@@ -426,7 +426,7 @@ class GetMovementsControllerSpec
             verify(auditService, times(1))
               .getInformationForGetMovements(
                 eqTo(filter),
-                eqTo(movements),
+                eqTo(movements.size),
                 any
               )(any)
           }
@@ -466,7 +466,7 @@ class GetMovementsControllerSpec
                     Some(TraderType("consignee", Seq(ern)))
                   )
                 ),
-                eqTo(movements),
+                eqTo(movements.size),
                 any
               )(
                 any

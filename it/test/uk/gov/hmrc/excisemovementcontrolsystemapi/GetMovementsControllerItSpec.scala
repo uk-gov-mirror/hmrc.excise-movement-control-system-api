@@ -90,6 +90,18 @@ class GetMovementsControllerItSpec
       }
     }
 
+    "return 200 with a large stream" in {
+      withAuthorizedTrader(consignorId)
+      when(
+        movementRepository.streamMovementsByERN(Seq(consignorId))
+      )
+        .thenReturn(Source.fromIterator(() => Iterator.fill(90000)(movement1)))
+
+      val result = getRequest(baseUrl)
+
+      result.status mustBe OK
+    }
+
     "return an Unauthorized (401) when no authorized trader" in {
       withUnauthorizedTrader(InternalError("A general auth failure"))
 
